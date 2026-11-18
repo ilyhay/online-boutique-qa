@@ -6,11 +6,7 @@ import time
 @pytest.fixture(scope="session")
 def check_minikube_running():
     """Проверка, что Minikube запущен перед началом тестов"""
-    result = subprocess.run(
-        ["minikube", "status"],
-        capture_output=True,
-        text=True
-    )
+    result = subprocess.run(["minikube", "status"], capture_output=True, text=True)
     if result.returncode != 0:
         pytest.skip("Minikube не запущен. Выполните 'minikube start'")
 
@@ -19,10 +15,17 @@ def check_minikube_running():
 def check_pods_running():
     """Проверка, что все поды Online Boutique в статусе Running"""
     result = subprocess.run(
-        ["kubectl", "get", "pods", "-l", "app!=loadgenerator",
-         "-o", "jsonpath={.items[*].status.phase}"],
+        [
+            "kubectl",
+            "get",
+            "pods",
+            "-l",
+            "app!=loadgenerator",
+            "-o",
+            "jsonpath={.items[*].status.phase}",
+        ],
         capture_output=True,
-        text=True
+        text=True,
     )
     phases = result.stdout.strip().split()
     if not all(p == "Running" for p in phases):
@@ -32,9 +35,14 @@ def check_pods_running():
 def start_port_forward(service_name, local_port, target_port):
     """Универсальная функция для запуска port-forward"""
     process = subprocess.Popen(
-        ["kubectl", "port-forward", f"service/{service_name}", f"{local_port}:{target_port}"],
+        [
+            "kubectl",
+            "port-forward",
+            f"service/{service_name}",
+            f"{local_port}:{target_port}",
+        ],
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
+        stderr=subprocess.DEVNULL,
     )
     time.sleep(2)
     return process
