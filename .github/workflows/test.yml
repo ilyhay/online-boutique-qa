@@ -1,0 +1,144 @@
+# .github/workflows/test.yml
+
+name: Online Boutique QA Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.12"
+  KUBECTL_VERSION: "1.30.4"
+
+jobs:
+  lint:
+    name: Code Quality Check
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8 black
+
+      - name: Check code formatting (black)
+        run: black --check tests/ || echo "Code formatting issues found"
+
+      - name: Lint with flake8
+        run: flake8 tests/ --max-line-length=120 --statistics || echo "Linting issues found"
+
+  infra-tests:
+    name: Infrastructure Tests
+    runs-on: ubuntu-22.04
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Checkout microservices-demo (для проверки манифестов)
+        uses: actions/checkout@v4
+        with:
+          repository: GoogleCloudPlatform/microservices-demo
+          path: microservices-demo-ref
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Подготавливаем путь к манифестам для теста
+        run: |
+          mkdir -p $HOME/microservices-demo
+          ln -s $GITHUB_WORKSPACE/microservices-demo-ref/kubernetes-manifests $HOME/microservices-demo/kubernetes-manifests
+
+      - name: Run Infrastructure tests
+        run: pytest tests/infra/ -v --tb=short
+
+  grpc-codegen:
+    name: gRPC Code Generation Check
+    runs-on: ubuntu-22.04
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Regenerate gRPC code
+        run: |
+          python -m grpc_tools.protoc \
+            -I./protos \
+            --python_out=./generated \
+            --grpc_python_out=./generated \
+            ./protos/demo.proto
+
+      - name: Verify generated files exist
+        run: |
+          test -f generated/demo_pb2.py
+          test -f generated/demo_pb2_grpc.py
+          echo "gRPC code generated successfully"
+
+  k8s-integration-tests:
+    name: Full K8s Integration Tests
+    runs-on: ubuntu-22.04
+    needs: [infra-tests, grpc-codegen]
+    if: github.event_name == 'workflow_dispatch'
+    environment: testing
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+
+      - name: Configure Kubernetes credentials
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Run all K8s tests
+        run: pytest tests/ -v --tb=short -s
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: |
+            .pytest_cache/
+            *.log
