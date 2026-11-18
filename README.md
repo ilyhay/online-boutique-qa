@@ -1,3 +1,5 @@
+[![Online Boutique QA Tests](https://github.com/ilyhay/online-boutique-qa/actions/workflows/test.yml/badge.svg)](https://github.com/ilyhay/online-boutique-qa/actions/workflows/test.yml)
+
 # Фреймворк автоматизированного тестирования для микросервисов Online Boutique
 
 Комплексный фреймворк автоматизированного тестирования для микросервисного приложения [Online Boutique](https://github.com/GoogleCloudPlatform/microservices-demo) от Google.
