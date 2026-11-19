@@ -117,6 +117,22 @@
 
 Полный прогон интеграционных тестов в Kubernetes настроен на ручной запуск (workflow_dispatch) и требует наличия настроенного кластера с доступом через секреты CI/CD.
 
+## Отчётность
+
+Все тесты интегрированы с Allure Report. Пример отчёта:
+
+![Allure Report](docs/allure-screenshot.png)
+
+Полный интерактивный отчёт последнего CI-прогона доступен по ссылке:
+https://ilyhay.github.io/online-boutique-qa/allure-report/
+
+Локальная генерация отчёта:
+```bash
+pytest tests/ -v --alluredir=allure-results
+allure generate allure-results -o allure-report --clean
+allure open --host 0.0.0.0 --port 8080 allure-report
+```
+
 ## Результаты по проекту
 
 Разработала комплексный фреймворк автоматизированного тестирования для микросервисного приложения из 11 gRPC-сервисов в Kubernetes. Реализовала контрактные, интеграционные, Chaos Engineering и observability тесты с использованием официального Kubernetes Python Client. Настроила CI/CD пайплайн в GitHub Actions для автоматической валидации кода и инфраструктуры.
