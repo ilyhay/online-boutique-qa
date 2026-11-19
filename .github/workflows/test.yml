@@ -32,22 +32,28 @@ jobs:
           pip install -r requirements.txt
           pip install flake8 black
       - name: Check formatting (black)
-        run: black --check tests/ || echo "Format issues found"
+        run: black --check tests/ || echo "⚠️ Format issues found"
       - name: Lint (flake8)
-        run: flake8 tests/ || echo "Lint issues found"
+        run: flake8 tests/ || echo "⚠️ Lint issues found"
 
   full-e2e-tests:
-    name: Full K8s E2E Tests (Contract, Integration, Chaos, Observability, Infra)
+    name: Full K8s E2E Tests
     runs-on: ubuntu-22.04
     needs: lint
     steps:
-      - name: Checkout code
+      - name: Checkout QA code
         uses: actions/checkout@v4
+
+      - name: Checkout microservices-demo (for K8s manifests)
+        uses: actions/checkout@v4
+        with:
+          repository: GoogleCloudPlatform/microservices-demo
+          path: microservices-demo
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.P6 }}
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
       - name: Install Python dependencies
@@ -68,16 +74,16 @@ jobs:
 
       - name: Deploy Online Boutique to Kind cluster
         run: |
-          echo "Deploying application."
-          kubectl apply -f kubernetes-manifests/
+          echo "Deploying application..."
+          kubectl apply -f microservices-demo/kubernetes-manifests/
           
-          echo "Waiting for all pods to be Ready (timeout 5m)."
+          echo "Waiting for all pods to be Ready (timeout 5m)..."
           kubectl wait --for=condition=ready pods --all --timeout=300s || (kubectl get pods && exit 1)
           
-          echo "Application is up and running."
+          echo "Application is up and running!"
           kubectl get pods
 
-      - name: Run ALL tests with Allure reporting
+      - name: Run all tests with Allure reporting
         run: |
           echo "Running full test suite..."
           pytest tests/ -v --alluredir=allure-results || TEST_FAILED=true
@@ -113,7 +119,8 @@ jobs:
           sudo ln -s /opt/allure/bin/allure /usr/local/bin/allure
 
       - name: Generate Allure Report
-        run: allure generate allure-results -o allure-report --clean
+        run: |
+          allure generate allure-results -o allure-report --clean
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
