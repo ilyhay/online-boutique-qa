@@ -74,15 +74,34 @@ jobs:
 
       - name: Deploy Online Boutique to Kind cluster
         run: |
-          echo "Deploying application..."
+          echo "Fixing placeholder image names in manifests..."
+          cd microservices-demo/kubernetes-manifests
+          
+          sed -i 's|image: adservice$|image: gcr.io/google-samples/microservices-demo/adservice:v0.10.0|g' adservice.yaml
+          sed -i 's|image: cartservice$|image: gcr.io/google-samples/microservices-demo/cartservice:v0.10.0|g' cartservice.yaml
+          sed -i 's|image: checkoutservice$|image: gcr.io/google-samples/microservices-demo/checkoutservice:v0.10.0|g' checkoutservice.yaml
+          sed -i 's|image: currencyservice$|image: gcr.io/google-samples/microservices-demo/currencyservice:v0.10.0|g' currencyservice.yaml
+          sed -i 's|image: emailservice$|image: gcr.io/google-samples/microservices-demo/emailservice:v0.10.0|g' emailservice.yaml
+          sed -i 's|image: frontend$|image: gcr.io/google-samples/microservices-demo/frontend:v0.10.0|g' frontend.yaml
+          sed -i 's|image: loadgenerator$|image: gcr.io/google-samples/microservices-demo/loadgenerator:v0.10.0|g' loadgenerator.yaml
+          sed -i 's|image: paymentservice$|image: gcr.io/google-samples/microservices-demo/paymentservice:v0.10.0|g' paymentservice.yaml
+          sed -i 's|image: productcatalogservice$|image: gcr.io/google-samples/microservices-demo/productcatalogservice:v0.10.0|g' productcatalogservice.yaml
+          sed -i 's|image: recommendationservice$|image: gcr.io/google-samples/microservices-demo/recommendationservice:v0.10.0|g' recommendationservice.yaml
+          sed -i 's|image: shippingservice$|image: gcr.io/google-samples/microservices-demo/shippingservice:v0.10.0|g' shippingservice.yaml
+          
+          cd ../..
+          
           rm -f microservices-demo/kubernetes-manifests/kustomization.yaml
+          
+          echo "Deploying application..."
           kubectl apply -f microservices-demo/kubernetes-manifests/
           
           echo "Waiting for all pods to be Ready (timeout 5m)..."
-          kubectl wait --for=condition=ready pods --all --timeout=300s || (kubectl get pods && exit 1)
+          kubectl wait --for=condition=ready pods --all --timeout=300s || (kubectl get pods && kubectl describe pods && exit 1)
           
           echo "Application is up and running!"
           kubectl get pods
+
       - name: Run all tests with Allure reporting
         run: |
           echo "Running full test suite..."
