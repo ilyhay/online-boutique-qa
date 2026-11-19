@@ -1,5 +1,3 @@
-# .github/workflows/test.yml
-
 name: Online Boutique QA Tests
 
 on:
@@ -13,146 +11,137 @@ env:
   PYTHON_VERSION: "3.12"
   KUBECTL_VERSION: "1.30.4"
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
   lint:
     name: Code Quality Check
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
-      
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
-      
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install flake8 black
-      
-      - name: Generate Allure Report
-        if: always()
-        run: |
-          # Запускаем все тесты и сохраняем результаты
-          pytest tests/ -v --alluredir=./allure-results || true
-          
-          # Скачиваем и распаковываем Allure CLI
-          wget -qO- https://github.com/allure-framework/allure2/releases/download/2.25.0/allure-2.25.0.tgz | tar -xz
-          ./allure-2.25.0/bin/allure generate ./allure-results -o ./allure-report --clean
-
-      - name: Publish Allure Report
-        if: always()
-        uses: simple-elf/allure-report-action@master
-        with:
-          allure_results: allure-results
-          gh_pages: gh-pages
-          allure_report: allure-report
-          allure_history: allure-history
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check formatting (black)
+        run: black --check tests/
+      - name: Lint (flake8)
+        run: flake8 tests/
 
   infra-tests:
     name: Infrastructure Tests
     runs-on: ubuntu-22.04
     needs: lint
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Checkout microservices-demo (для проверки манифестов)
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Checkout microservices-demo (source manifests)
+        uses: actions/checkout@v5
         with:
           repository: GoogleCloudPlatform/microservices-demo
           path: microservices-demo-ref
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
-
       - name: Install dependencies
         run: pip install -r requirements.txt
-
-      - name: Подготавливаем путь к манифестам для теста
+      - name: Prepare manifests path
         run: |
           mkdir -p $HOME/microservices-demo
-          ln -s $GITHUB_WORKSPACE/microservices-demo-ref/kubernetes-manifests $HOME/microservices-demo/kubernetes-manifests
-
-      - name: Run Infrastructure tests
-        run: pytest tests/infra/ -v --tb=short
+          ln -s "$GITHUB_WORKSPACE/microservices-demo-ref/kubernetes-manifests" \
+                "$HOME/microservices-demo/kubernetes-manifests"
+      - name: Run Infrastructure tests with Allure
+        run: |
+          pytest tests/infra/ -v --alluredir=allure-results --clean-alluredir
+        continue-on-error: true
+      - name: Upload allure-results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results
+          path: allure-results/
 
   grpc-codegen:
     name: gRPC Code Generation Check
     runs-on: ubuntu-22.04
     needs: lint
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
-
       - name: Install dependencies
         run: pip install -r requirements.txt
-
       - name: Regenerate gRPC code
         run: |
+          mkdir -p generated
           python -m grpc_tools.protoc \
             -I./protos \
             --python_out=./generated \
             --grpc_python_out=./generated \
             ./protos/demo.proto
-
       - name: Verify generated files exist
         run: |
           test -f generated/demo_pb2.py
           test -f generated/demo_pb2_grpc.py
           echo "gRPC code generated successfully"
 
+  allure-report:
+    name: Publish Allure Report
+    runs-on: ubuntu-22.04
+    needs: [infra-tests, grpc-codegen]
+    if: always()
+    steps:
+      - name: Download allure-results
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-results
+          path: allure-results
+
+      - name: Publish Allure Report to GitHub Pages
+        uses: simple-elf/allure-report-action@v1.13
+        with:
+          allure_results: allure-results
+          allure_history: allure-history
+          allure_report: allure-report
+          gh_pages: gh-pages
+
   k8s-integration-tests:
     name: Full K8s Integration Tests
     runs-on: ubuntu-22.04
     needs: [infra-tests, grpc-codegen]
     if: github.event_name == 'workflow_dispatch'
-    environment: testing
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
-
       - name: Install dependencies
         run: pip install -r requirements.txt
-
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
         with:
           version: ${{ env.KUBECTL_VERSION }}
-
       - name: Configure Kubernetes credentials
         run: |
           mkdir -p $HOME/.kube
           echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
-
       - name: Run all K8s tests
-        run: pytest tests/ -v --tb=short -s
-
-      - name: Upload test results
+        run: pytest tests/ -v --tb=short -s --alluredir=allure-results
+      - name: Upload Allure results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pytest-results
-          path: |
-            .pytest_cache/
-            *.log
+          name: allure-results-full
+          path: allure-results/
