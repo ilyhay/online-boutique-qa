@@ -18,26 +18,45 @@ jobs:
     name: Code Quality Check
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v5
+      
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
-
+      
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install flake8 black
-
-      - name: Check code formatting (black)
-        run: black --check tests/ || echo "Code formatting issues found"
-
-      - name: Lint with flake8
-        run: flake8 tests/ --max-line-length=120 --statistics || echo "Linting issues found"
+      
+      - name: Check formatting (black)
+        run: black --check tests/
+      
+      - name: Lint (flake8)
+        run: flake8 tests/
+      
+      - name: Generate Allure Report
+        if: always()
+        run: |
+          # Запускаем тесты с генерацией Allure данных
+          pytest tests/infra/ -v --alluredir=./allure-results || true
+          
+          # Устанавливаем Allure CLI
+          wget -qO- https://github.com/allure-framework/allure2/releases/download/2.25.0/allure-2.25.0.tgz | tar -xz
+          ./allure-2.25.0/bin/allure generate ./allure-results -o ./allure-report --clean
+          
+          # Публикуем отчет как артефакт
+          echo "Allure report generated successfully"
+      
+      - name: Upload Allure Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report/
 
   infra-tests:
     name: Infrastructure Tests
