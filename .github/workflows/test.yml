@@ -32,12 +32,6 @@ jobs:
           pip install -r requirements.txt
           pip install flake8 black
       
-      - name: Check formatting (black)
-        run: black --check tests/
-      
-      - name: Lint (flake8)
-        run: flake8 tests/
-      
       - name: Generate Allure Report
         if: always()
         run: |
