@@ -32,9 +32,9 @@ jobs:
           pip install -r requirements.txt
           pip install flake8 black
       - name: Check formatting (black)
-        run: black --check tests/ || echo "⚠️ Format issues found"
+        run: black --check tests/ || echo "Format issues found"
       - name: Lint (flake8)
-        run: flake8 tests/ || echo "⚠️ Lint issues found"
+        run: flake8 tests/ || echo "Lint issues found"
 
   full-e2e-tests:
     name: Full K8s E2E Tests
@@ -75,6 +75,7 @@ jobs:
       - name: Deploy Online Boutique to Kind cluster
         run: |
           echo "Deploying application..."
+          rm -f microservices-demo/kubernetes-manifests/kustomization.yaml
           kubectl apply -f microservices-demo/kubernetes-manifests/
           
           echo "Waiting for all pods to be Ready (timeout 5m)..."
@@ -82,7 +83,6 @@ jobs:
           
           echo "Application is up and running!"
           kubectl get pods
-
       - name: Run all tests with Allure reporting
         run: |
           echo "Running full test suite..."
