@@ -35,22 +35,23 @@ jobs:
       - name: Generate Allure Report
         if: always()
         run: |
-          # Запускаем тесты с генерацией Allure данных
-          pytest tests/infra/ -v --alluredir=./allure-results || true
+          # Запускаем все тесты и сохраняем результаты
+          pytest tests/ -v --alluredir=./allure-results || true
           
-          # Устанавливаем Allure CLI
+          # Скачиваем и распаковываем Allure CLI
           wget -qO- https://github.com/allure-framework/allure2/releases/download/2.25.0/allure-2.25.0.tgz | tar -xz
           ./allure-2.25.0/bin/allure generate ./allure-results -o ./allure-report --clean
-          
-          # Публикуем отчет как артефакт
-          echo "Allure report generated successfully"
-      
-      - name: Upload Allure Report
+
+      - name: Publish Allure Report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: simple-elf/allure-report-action@master
         with:
-          name: allure-report
-          path: allure-report/
+          allure_results: allure-results
+          gh_pages: gh-pages
+          allure_report: allure-report
+          allure_history: allure-history
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   infra-tests:
     name: Infrastructure Tests
