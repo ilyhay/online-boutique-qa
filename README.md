@@ -1,5 +1,5 @@
 [![Online Boutique QA Tests](https://github.com/ilyhay/online-boutique-qa/actions/workflows/test.yml/badge.svg)](https://github.com/ilyhay/online-boutique-qa/actions/workflows/test.yml)
-
+[![Allure Report](https://img.shields.io/badge/Allure%20Report-live-brightgreen)](https://ilyhay.github.io/online-boutique-qa/)
 # Фреймворк автоматизированного тестирования для микросервисов Online Boutique
 
 Комплексный фреймворк автоматизированного тестирования для микросервисного приложения [Online Boutique](https://github.com/GoogleCloudPlatform/microservices-demo) от Google.
@@ -124,7 +124,7 @@
 ![Allure Report](docs/all_results.png)
 
 Полный интерактивный отчёт последнего CI-прогона доступен по ссылке:
-https://ilyhay.github.io/online-boutique-qa/allure-report/
+https://ilyhay.github.io/online-boutique-qa/
 
 Локальная генерация отчёта:
 ```bash
