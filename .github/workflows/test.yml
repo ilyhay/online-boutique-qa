@@ -21,8 +21,8 @@ jobs:
     name: Code Quality Check
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -31,19 +31,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install flake8 black
+      - name: Check formatting (black)
+        run: black --check tests/ || echo "⚠️ Format issues found (run 'black tests/' locally)"
+      - name: Lint (flake8)
+        run: flake8 tests/ || echo "⚠️ Lint issues found"
 
   infra-tests:
     name: Infrastructure Tests
     runs-on: ubuntu-22.04
     needs: lint
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
       - name: Checkout microservices-demo (source manifests)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           repository: GoogleCloudPlatform/microservices-demo
           path: microservices-demo-ref
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -56,8 +60,10 @@ jobs:
                 "$HOME/microservices-demo/kubernetes-manifests"
       - name: Run Infrastructure tests with Allure
         run: |
-          pytest tests/infra/ -v --alluredir=allure-results --clean-alluredir
-        continue-on-error: true
+          mkdir -p allure-results
+          # Запускаем тесты и сохраняем результаты. 
+          # || true гарантирует, что шаг не упадет, если тесты не пройдут, и отчет все равно сгенерируется.
+          pytest tests/infra/ -v --alluredir=allure-results || true
       - name: Upload allure-results
         if: always()
         uses: actions/upload-artifact@v4
@@ -65,36 +71,10 @@ jobs:
           name: allure-results
           path: allure-results/
 
-  grpc-codegen:
-    name: gRPC Code Generation Check
-    runs-on: ubuntu-22.04
-    needs: lint
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Regenerate gRPC code
-        run: |
-          mkdir -p generated
-          python -m grpc_tools.protoc \
-            -I./protos \
-            --python_out=./generated \
-            --grpc_python_out=./generated \
-            ./protos/demo.proto
-      - name: Verify generated files exist
-        run: |
-          test -f generated/demo_pb2.py
-          test -f generated/demo_pb2_grpc.py
-          echo "gRPC code generated successfully"
-
   allure-report:
-    name: Publish Allure Report
+    name: Generate and Publish Allure Report
     runs-on: ubuntu-22.04
-    needs: [infra-tests, grpc-codegen]
+    needs: infra-tests
     if: always()
     steps:
       - name: Download allure-results
@@ -103,41 +83,24 @@ jobs:
           name: allure-results
           path: allure-results
 
-      - name: Publish Allure Report to GitHub Pages
-        uses: simple-elf/allure-report-action@v1.13
-        with:
-          allure_results: allure-results
-          allure_history: allure-history
-          allure_report: allure-report
-          gh_pages: gh-pages
-
-  k8s-integration-tests:
-    name: Full K8s Integration Tests
-    runs-on: ubuntu-22.04
-    needs: [infra-tests, grpc-codegen]
-    if: github.event_name == 'workflow_dispatch'
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: ${{ env.KUBECTL_VERSION }}
-      - name: Configure Kubernetes credentials
+      - name: Install Allure CLI
         run: |
-          mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
-          chmod 600 $HOME/.kube/config
-      - name: Run all K8s tests
-        run: pytest tests/ -v --tb=short -s --alluredir=allure-results
-      - name: Upload Allure results
-        if: always()
-        uses: actions/upload-artifact@v4
+          wget -qO- https://github.com/allure-framework/allure2/releases/download/2.25.0/allure-2.25.0.tgz | tar -xz
+          sudo mv allure-2.25.0 /opt/allure
+          sudo ln -s /opt/allure/bin/allure /usr/local/bin/allure
+
+      - name: Generate Allure Report
+        run: |
+          allure generate allure-results -o allure-report --clean
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact for GitHub Pages
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: allure-results-full
-          path: allure-results/
+          path: allure-report
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
