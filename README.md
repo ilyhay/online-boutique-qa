@@ -121,7 +121,7 @@
 
 Все тесты интегрированы с Allure Report. Пример отчёта:
 
-![Allure Report](docs/allure-screenshot.png)
+![Allure Report](docs/all_results.png)
 
 Полный интерактивный отчёт последнего CI-прогона доступен по ссылке:
 https://ilyhay.github.io/online-boutique-qa/allure-report/
