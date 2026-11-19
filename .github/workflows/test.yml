@@ -32,39 +32,62 @@ jobs:
           pip install -r requirements.txt
           pip install flake8 black
       - name: Check formatting (black)
-        run: black --check tests/ || echo "⚠️ Format issues found (run 'black tests/' locally)"
+        run: black --check tests/ || echo "Format issues found"
       - name: Lint (flake8)
-        run: flake8 tests/ || echo "⚠️ Lint issues found"
+        run: flake8 tests/ || echo "Lint issues found"
 
-  infra-tests:
-    name: Infrastructure Tests
+  full-e2e-tests:
+    name: Full K8s E2E Tests (Contract, Integration, Chaos, Observability, Infra)
     runs-on: ubuntu-22.04
     needs: lint
     steps:
-      - uses: actions/checkout@v4
-      - name: Checkout microservices-demo (source manifests)
+      - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          repository: GoogleCloudPlatform/microservices-demo
-          path: microservices-demo-ref
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ env.P6 }}
           cache: 'pip'
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Prepare manifests path
+
+      - name: Install Python dependencies
         run: |
-          mkdir -p $HOME/microservices-demo
-          ln -s "$GITHUB_WORKSPACE/microservices-demo-ref/kubernetes-manifests" \
-                "$HOME/microservices-demo/kubernetes-manifests"
-      - name: Run Infrastructure tests with Allure
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Setup Kind (Kubernetes in Docker) cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: boutique-ci
+          version: v0.20.0
+
+      - name: Verify cluster is running
         run: |
-          mkdir -p allure-results
-          # Запускаем тесты и сохраняем результаты. 
-          # || true гарантирует, что шаг не упадет, если тесты не пройдут, и отчет все равно сгенерируется.
-          pytest tests/infra/ -v --alluredir=allure-results || true
-      - name: Upload allure-results
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Deploy Online Boutique to Kind cluster
+        run: |
+          echo "Deploying application."
+          kubectl apply -f kubernetes-manifests/
+          
+          echo "Waiting for all pods to be Ready (timeout 5m)."
+          kubectl wait --for=condition=ready pods --all --timeout=300s || (kubectl get pods && exit 1)
+          
+          echo "Application is up and running."
+          kubectl get pods
+
+      - name: Run ALL tests with Allure reporting
+        run: |
+          echo "Running full test suite..."
+          pytest tests/ -v --alluredir=allure-results || TEST_FAILED=true
+          
+          if [ "$TEST_FAILED" = true ]; then
+            echo "Some tests failed. Check Allure report for details."
+            exit 1
+          fi
+
+      - name: Upload Allure results artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -72,9 +95,9 @@ jobs:
           path: allure-results/
 
   allure-report:
-    name: Generate and Publish Allure Report
+    name: Publish Allure Report
     runs-on: ubuntu-22.04
-    needs: infra-tests
+    needs: full-e2e-tests
     if: always()
     steps:
       - name: Download allure-results
@@ -90,8 +113,7 @@ jobs:
           sudo ln -s /opt/allure/bin/allure /usr/local/bin/allure
 
       - name: Generate Allure Report
-        run: |
-          allure generate allure-results -o allure-report --clean
+        run: allure generate allure-results -o allure-report --clean
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
