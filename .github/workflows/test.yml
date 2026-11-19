@@ -102,6 +102,16 @@ jobs:
           echo "Application is up and running!"
           kubectl get pods
 
+      - name: Generate gRPC code
+        run: |
+          echo "Generating gRPC code for CI environment..."
+          mkdir -p generated
+          python -m grpc_tools.protoc \
+            -I./protos \
+            --python_out=./generated \
+            --grpc_python_out=./generated \
+            ./protos/demo.proto
+
       - name: Run all tests with Allure reporting
         run: |
           echo "Running full test suite..."
